@@ -58,7 +58,7 @@ if not st.session_state.logged_in:
                 st.session_state.username = username
                 st.session_state.is_admin = bool(user[2])
                 st.success("Login berhasil!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Username atau password salah.")
     else:
@@ -81,7 +81,7 @@ if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.session_state.is_admin = False
-    st.experimental_rerun()
+    st.rerun()
 
 # === ADMIN TAMPILAN KHUSUS ===
 if st.session_state.is_admin:
