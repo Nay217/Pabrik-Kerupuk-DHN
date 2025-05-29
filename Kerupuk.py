@@ -6,12 +6,6 @@ import os
 
 st.set_page_config(page_title="Pabrik Kerupuk DHN", layout="centered")
 
-# === COVER IMAGE ===
-if not os.path.exists("cover.jpg"):
-    st.warning("❌ Gambar 'cover.jpg' tidak ditemukan.")
-else:
-    st.image("cover.jpg", use_column_width=True)
-
 st.title("Pabrik Kerupuk DHN 🍘")
 st.markdown("---")
 
