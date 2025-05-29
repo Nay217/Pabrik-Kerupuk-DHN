@@ -81,7 +81,7 @@ if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.session_state.is_admin = False
-    st.experimental_rerun()
+    st.rerun()
 
 # === MENU UTAMA ===
 menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan"])
