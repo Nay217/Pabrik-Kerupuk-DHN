@@ -2,25 +2,30 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import date
+import os
 
 st.set_page_config(page_title="Pabrik Kerupuk DHN", layout="centered")
 
-# === COVER ===
-st.image("cover web kerupuk.jpg", use_column_width=True)
+# === COVER IMAGE ===
+if not os.path.exists("cover.jpg"):
+    st.warning("❌ Gambar 'cover.jpg' tidak ditemukan.")
+else:
+    st.image("cover.jpg", use_column_width=True)
+
 st.title("Pabrik Kerupuk DHN 🍘")
 st.markdown("---")
 
 # === LOGIN SECTION ===
-
-# Contoh kredensial (dalam praktik lebih baik disimpan di database dan dienkripsi)
 USERS = {
     "admin": "1234",
     "aceng": "kerupuk"
 }
 
-# Cek login status di session_state
+# Inisialisasi session state
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
 # Form login
 if not st.session_state.logged_in:
@@ -31,10 +36,19 @@ if not st.session_state.logged_in:
     if st.button("Login"):
         if username in USERS and USERS[username] == password:
             st.session_state.logged_in = True
+            st.session_state.username = username
             st.success("Login berhasil!")
+            st.experimental_rerun()
         else:
             st.error("Nama pengguna atau password salah.")
-    st.stop()  # Hentikan eksekusi jika belum login
+    st.stop()
+
+# === TOMBOL LOGOUT DI SIDEBAR ===
+st.sidebar.markdown(f"**Login sebagai:** {st.session_state.username}")
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.experimental_rerun()
 
 # === DATABASE ===
 conn = sqlite3.connect("kerupuk.db", check_same_thread=False)
@@ -56,7 +70,6 @@ conn.commit()
 st.title("Dashboard Keuangan Kerupuk Pak Aceng")
 menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan"])
 
-# === MENU: Kirim ke Warung ===
 if menu == "Kirim ke Warung":
     st.header("Input Pengiriman / Titipan")
     tanggal = st.date_input("Tanggal", date.today())
@@ -78,11 +91,9 @@ if menu == "Kirim ke Warung":
             conn.commit()
             st.success("Data pengiriman berhasil disimpan.")
 
-# === MENU: Rekap Penjualan ===
 elif menu == "Rekap Penjualan":
     st.header("Rekap Penjualan")
     df = pd.read_sql_query("SELECT * FROM kirim", conn)
-
     if df.empty:
         st.info("Belum ada data.")
     else:
@@ -91,12 +102,10 @@ elif menu == "Rekap Penjualan":
         st.dataframe(df)
         st.subheader(f"Total Pendapatan: Rp {df['Pendapatan'].sum():,.0f}")
 
-# === MENU: Dashboard Harian ===
 elif menu == "Dashboard":
     st.header("Dashboard Harian")
     hari_ini = date.today()
     df = pd.read_sql_query("SELECT * FROM kirim WHERE tanggal = ?", conn, params=(hari_ini,))
-
     if df.empty:
         st.info("Belum ada data untuk hari ini.")
     else:
@@ -104,22 +113,18 @@ elif menu == "Dashboard":
         df["tanggal"] = pd.to_datetime(df["tanggal"]).dt.strftime("%d-%m-%Y")
         st.dataframe(df)
         st.subheader(f"Pendapatan Hari Ini: Rp {df['Pendapatan'].sum():,.0f}")
-
         df_chart = df.groupby("warung")["Pendapatan"].sum().reset_index()
         st.bar_chart(df_chart.set_index("warung"))
 
-# === MENU: Laporan Bulanan ===
 elif menu == "Laporan Bulanan":
     st.header("Laporan Bulanan")
     bulan = st.selectbox("Pilih Bulan", list(range(1, 13)), format_func=lambda x: f"{x:02}")
     tahun = st.number_input("Tahun", value=date.today().year, step=1)
-
     query = """
         SELECT * FROM kirim
         WHERE strftime('%m', tanggal) = ? AND strftime('%Y', tanggal) = ?
     """
     df = pd.read_sql_query(query, conn, params=(f"{bulan:02}", str(tahun)))
-
     if df.empty:
         st.info(f"Belum ada data untuk bulan {bulan:02}/{tahun}.")
     else:
@@ -128,5 +133,5 @@ elif menu == "Laporan Bulanan":
         st.dataframe(df)
         st.subheader(f"Total Pendapatan Bulan {bulan:02}/{tahun}: Rp {df['Pendapatan'].sum():,.0f}")
 
-# Tutup koneksi database
+# === Tutup koneksi DB ===
 conn.close()
