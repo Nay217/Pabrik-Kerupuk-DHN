@@ -2,17 +2,16 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import date
-import os
 
 st.set_page_config(page_title="Pabrik Kerupuk DHN", layout="centered")
-
 st.title("Pabrik Kerupuk DHN 🍘")
 st.markdown("---")
 
 # === LOGIN SECTION ===
 USERS = {
     "admin": "1234",
-    "aceng": "kerupuk"
+    "aceng": "kerupuk",
+    "ucup": "kerupuk2"
 }
 
 # Inisialisasi session state
@@ -37,7 +36,7 @@ if not st.session_state.logged_in:
             st.error("Nama pengguna atau password salah.")
     st.stop()
 
-# === TOMBOL LOGOUT DI SIDEBAR ===
+# === SIDEBAR & LOGOUT ===
 st.sidebar.markdown(f"**Login sebagai:** {st.session_state.username}")
 if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
@@ -48,6 +47,7 @@ if st.sidebar.button("Logout"):
 conn = sqlite3.connect("kerupuk.db", check_same_thread=False)
 c = conn.cursor()
 
+# Cek dan tambahkan kolom user jika belum ada
 c.execute("""
 CREATE TABLE IF NOT EXISTS kirim (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,15 +55,21 @@ CREATE TABLE IF NOT EXISTS kirim (
     warung TEXT,
     jumlah_kirim INTEGER,
     jumlah_terjual INTEGER,
-    harga_satuan INTEGER
+    harga_satuan INTEGER,
+    user TEXT
 )
 """)
-conn.commit()
+c.execute("PRAGMA table_info(kirim)")
+columns = [col[1] for col in c.fetchall()]
+if "user" not in columns:
+    c.execute("ALTER TABLE kirim ADD COLUMN user TEXT")
+    conn.commit()
 
-# === MENU UTAMA ===
-st.title("Dashboard Keuangan Kerupuk Pak Aceng")
+# === MENU ===
+st.title("Dashboard Keuangan Kerupuk")
 menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan"])
 
+# === Kirim ===
 if menu == "Kirim ke Warung":
     st.header("Input Pengiriman / Titipan")
     tanggal = st.date_input("Tanggal", date.today())
@@ -79,15 +85,19 @@ if menu == "Kirim ke Warung":
             st.warning("Jumlah terjual tidak boleh lebih besar dari jumlah kirim.")
         else:
             c.execute("""
-                INSERT INTO kirim (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan)
-                VALUES (?, ?, ?, ?, ?)
-            """, (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan))
+                INSERT INTO kirim (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, user)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, st.session_state.username))
             conn.commit()
             st.success("Data pengiriman berhasil disimpan.")
 
+# === Rekap ===
 elif menu == "Rekap Penjualan":
     st.header("Rekap Penjualan")
-    df = pd.read_sql_query("SELECT * FROM kirim", conn)
+    if st.session_state.username == "admin":
+        df = pd.read_sql_query("SELECT * FROM kirim", conn)
+    else:
+        df = pd.read_sql_query("SELECT * FROM kirim WHERE user = ?", conn, params=(st.session_state.username,))
     if df.empty:
         st.info("Belum ada data.")
     else:
@@ -96,10 +106,17 @@ elif menu == "Rekap Penjualan":
         st.dataframe(df)
         st.subheader(f"Total Pendapatan: Rp {df['Pendapatan'].sum():,.0f}")
 
+# === Dashboard ===
 elif menu == "Dashboard":
     st.header("Dashboard Harian")
     hari_ini = date.today()
-    df = pd.read_sql_query("SELECT * FROM kirim WHERE tanggal = ?", conn, params=(hari_ini,))
+    if st.session_state.username == "admin":
+        df = pd.read_sql_query("SELECT * FROM kirim WHERE tanggal = ?", conn, params=(hari_ini,))
+    else:
+        df = pd.read_sql_query(
+            "SELECT * FROM kirim WHERE tanggal = ? AND user = ?", conn,
+            params=(hari_ini, st.session_state.username)
+        )
     if df.empty:
         st.info("Belum ada data untuk hari ini.")
     else:
@@ -110,15 +127,24 @@ elif menu == "Dashboard":
         df_chart = df.groupby("warung")["Pendapatan"].sum().reset_index()
         st.bar_chart(df_chart.set_index("warung"))
 
+# === Bulanan ===
 elif menu == "Laporan Bulanan":
     st.header("Laporan Bulanan")
     bulan = st.selectbox("Pilih Bulan", list(range(1, 13)), format_func=lambda x: f"{x:02}")
     tahun = st.number_input("Tahun", value=date.today().year, step=1)
-    query = """
-        SELECT * FROM kirim
-        WHERE strftime('%m', tanggal) = ? AND strftime('%Y', tanggal) = ?
-    """
-    df = pd.read_sql_query(query, conn, params=(f"{bulan:02}", str(tahun)))
+    if st.session_state.username == "admin":
+        query = """
+            SELECT * FROM kirim
+            WHERE strftime('%m', tanggal) = ? AND strftime('%Y', tanggal) = ?
+        """
+        df = pd.read_sql_query(query, conn, params=(f"{bulan:02}", str(tahun)))
+    else:
+        query = """
+            SELECT * FROM kirim
+            WHERE strftime('%m', tanggal) = ? AND strftime('%Y', tanggal) = ? AND user = ?
+        """
+        df = pd.read_sql_query(query, conn, params=(f"{bulan:02}", str(tahun), st.session_state.username))
+
     if df.empty:
         st.info(f"Belum ada data untuk bulan {bulan:02}/{tahun}.")
     else:
