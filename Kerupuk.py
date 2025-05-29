@@ -3,15 +3,16 @@ import pandas as pd
 import sqlite3
 from datetime import date, timedelta
 
+# === SETUP ===
 st.set_page_config(page_title="Pabrik Kerupuk DHN", layout="centered")
 st.title("Pabrik Kerupuk DHN 🍘")
 st.markdown("---")
 
-# === DB SETUP ===
+# === DATABASE ===
 conn = sqlite3.connect("kerupuk.db", check_same_thread=False)
 c = conn.cursor()
 
-# Buat tabel user
+# Buat tabel users
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
@@ -34,7 +35,7 @@ CREATE TABLE IF NOT EXISTS kirim (
 """)
 conn.commit()
 
-# === SESSION STATE ===
+# === SESSION ===
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
@@ -42,7 +43,7 @@ if "username" not in st.session_state:
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 
-# === REGISTRASI & LOGIN ===
+# === LOGIN & REGISTRASI ===
 menu_auth = st.sidebar.selectbox("Login / Daftar", ["Login", "Daftar"])
 
 if not st.session_state.logged_in:
@@ -58,7 +59,7 @@ if not st.session_state.logged_in:
                 st.session_state.username = username
                 st.session_state.is_admin = bool(user[2])
                 st.success("Login berhasil!")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Username atau password salah.")
     else:
@@ -70,7 +71,7 @@ if not st.session_state.logged_in:
             if c.fetchone():
                 st.error("Username sudah dipakai.")
             else:
-                c.execute("INSERT INTO users (username, password) VALUES (?, ?) ", (new_user, new_pass))
+                c.execute("INSERT INTO users (username, password, is_admin) VALUES (?, ?, 0)", (new_user, new_pass))
                 conn.commit()
                 st.success("Akun berhasil dibuat. Silakan login.")
     st.stop()
@@ -81,11 +82,11 @@ if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.session_state.is_admin = False
-    st.rerun()
+    st.experimental_rerun()
 
-# === MENU ADMIN ===
+# === MENU KHUSUS ADMIN ===
 if st.session_state.is_admin:
-    st.header("📊 Dashboard Admin")
+    st.header("📊 Admin Dashboard")
 
     df = pd.read_sql_query("SELECT * FROM kirim", conn)
     if df.empty:
@@ -94,47 +95,30 @@ if st.session_state.is_admin:
         df["Pendapatan"] = df["jumlah_terjual"] * df["harga_satuan"]
         df["tanggal"] = pd.to_datetime(df["tanggal"])
 
-        st.subheader("Rekap Seluruh Penjualan")
+        st.subheader("Semua Rekapan")
         st.dataframe(df)
-        st.markdown(f"**Total Pendapatan Keseluruhan: Rp {df['Pendapatan'].sum():,.0f}**")
 
-        st.subheader("Rekap Gaji per Karyawan")
-        gaji_df = df.groupby("user")["Pendapatan"].sum().reset_index()
-        gaji_df.columns = ["Karyawan", "Total Gaji"]
-        st.dataframe(gaji_df)
+        st.subheader("Total Pendapatan Keseluruhan")
+        st.metric("Total (Rp)", f"{df['Pendapatan'].sum():,.0f}")
 
-        st.subheader("Rekap Mingguan")
+        st.subheader("Pendapatan per Karyawan")
+        st.bar_chart(df.groupby("user")["Pendapatan"].sum())
+
+        st.subheader("Dashboard Mingguan")
         minggu_lalu = date.today() - timedelta(days=7)
         df_minggu = df[df["tanggal"] >= pd.to_datetime(minggu_lalu)]
-        if df_minggu.empty:
-            st.write("Tidak ada data 7 hari terakhir.")
-        else:
-            st.dataframe(df_minggu)
-            st.markdown(f"**Total Pendapatan 7 Hari Terakhir: Rp {df_minggu['Pendapatan'].sum():,.0f}**")
+        if not df_minggu.empty:
+            chart = df_minggu.groupby(df_minggu["tanggal"].dt.strftime("%d-%m"))["Pendapatan"].sum()
+            st.line_chart(chart)
 
-        st.subheader("Rekap Bulanan")
-        bulan_ini = date.today().month
-        tahun_ini = date.today().year
-        df_bulan = df[(df["tanggal"].dt.month == bulan_ini) & (df["tanggal"].dt.year == tahun_ini)]
-        if df_bulan.empty:
-            st.write("Tidak ada data bulan ini.")
-        else:
-            st.dataframe(df_bulan)
-            st.markdown(f"**Total Pendapatan Bulan Ini: Rp {df_bulan['Pendapatan'].sum():,.0f}**")
+        st.subheader("Dashboard Bulanan")
+        df["Bulan"] = df["tanggal"].dt.strftime("%B %Y")
+        bulanan = df.groupby("Bulan")["Pendapatan"].sum().reset_index()
+        st.bar_chart(bulanan.set_index("Bulan"))
 
-        st.subheader("📤 Ekspor Data")
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download CSV Rekapan",
-            data=csv,
-            file_name="rekapan_kerupuk.csv",
-            mime="text/csv"
-        )
-
-# === MENU KARYAWAN ===
 else:
+    # === MENU UNTUK USER BIASA ===
     menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan"])
-    st.title("Dashboard Keuangan Kerupuk")
 
     if menu == "Kirim ke Warung":
         st.header("Input Pengiriman / Titipan")
@@ -150,10 +134,9 @@ else:
             elif jumlah_terjual > jumlah_kirim:
                 st.warning("Jumlah terjual tidak boleh lebih besar dari jumlah kirim.")
             else:
-                c.execute("""
-                    INSERT INTO kirim (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, user)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, st.session_state.username))
+                c.execute("""INSERT INTO kirim (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, user)
+                             VALUES (?, ?, ?, ?, ?, ?)""",
+                          (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, st.session_state.username))
                 conn.commit()
                 st.success("Data berhasil disimpan.")
 
@@ -189,6 +172,7 @@ else:
         st.header("Laporan Bulanan")
         bulan = st.selectbox("Pilih Bulan", list(range(1, 13)), format_func=lambda x: f"{x:02}")
         tahun = st.number_input("Tahun", value=date.today().year, step=1)
+
         query = """
             SELECT * FROM kirim
             WHERE strftime('%m', tanggal) = ? AND strftime('%Y', tanggal) = ? AND user = ?
