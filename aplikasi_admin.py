@@ -93,7 +93,12 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # === MENU UTAMA ===
-menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung","Rekap Penjualan", "Dashboard", "Laporan Bulanan", "Gaji Karyawan" ])
+if st.session_state.is_admin:
+    menu_options = ["Rekap Penjualan", "Dashboard", "Laporan Bulanan", "Gaji Karyawan"]
+else:
+    menu_options = ["Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan"]
+
+menu = st.sidebar.selectbox("Menu", menu_options)
 
 # === MENU ADMIN KHUSUS ===
 if st.session_state.is_admin:
@@ -201,6 +206,14 @@ elif menu == "Laporan Bulanan":
 # Menu: Gaji
 elif menu == "Gaji Karyawan":
     st.header("Perhitungan Gaji Karyawan")
+
+    # Tabel Nama Karyawan
+    st.subheader("Daftar Karyawan")
+    df_users = pd.read_sql("SELECT username AS 'Nama Karyawan' FROM users WHERE is_admin = 0", conn)
+    if df_users.empty:
+        st.info("Belum ada karyawan terdaftar.")
+    else:
+        st.dataframe(df_users)
     margin_per_kerupuk = 1000  # Selisih harga jual ke warung (5000) dan harga dari pabrik (4000)
     df = pd.read_sql("""
         SELECT tanggal, user, SUM(jumlah_terjual) as total_terjual
