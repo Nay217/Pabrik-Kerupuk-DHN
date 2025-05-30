@@ -40,11 +40,6 @@ if "logged_in" not in st.session_state:
     st.session_state.username = ""
     st.session_state.is_admin = False
 
-# Cek admin pertama
-c.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1")
-if c.fetchone()[0] == 0:
-    st.info("Belum ada admin. User pertama yang daftar akan menjadi admin.")
-
 # AUTH
 auth_menu = st.sidebar.selectbox("Login / Daftar", ["Login", "Daftar", "Ganti Password"])
 
@@ -102,25 +97,8 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 menu = st.sidebar.selectbox("Menu", [
-    "Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan", "Gaji Karyawan"
+    "Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan"
 ])
-
-# Admin tools
-if st.session_state.is_admin:
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔧 Kelola User")
-    if st.sidebar.checkbox("Kelola Hak Akses"):
-        st.subheader("Manajemen User")
-        df_users = pd.read_sql("SELECT username, is_admin FROM users", conn)
-        st.dataframe(df_users)
-        non_admins = df_users[df_users["is_admin"] == 0]["username"].tolist()
-        if non_admins:
-            promote_user = st.selectbox("Pilih user untuk jadi admin", non_admins)
-            if st.button("Jadikan Admin"):
-                c.execute("UPDATE users SET is_admin = 1 BOS KERUPUK = ?", (promote_user,))
-                conn.commit()
-                st.success(f"{promote_user} sekarang admin!")
-                st.rerun()
 
 # Menu: Kirim
 if menu == "Kirim ke Warung":
@@ -204,20 +182,6 @@ elif menu == "Laporan Bulanan":
         st.subheader(f"Total Pendapatan Bulan Ini: Rp {df['Pendapatan'].sum():,.0f}")
         if st.download_button("Ekspor Excel", df.to_csv(index=False).encode(), "laporan_bulanan.csv", "text/csv"):
             st.success("Berhasil diekspor.")
-
-# Menu: Gaji
-elif menu == "Gaji Karyawan":
-    st.header("Perhitungan Gaji Karyawan")
-    gaji_per_kerupuk = st.number_input("Upah per kerupuk terjual (Rp)", min_value=0, value=500)
-    df = pd.read_sql("SELECT user, SUM(jumlah_terjual) as total_terjual FROM kirim GROUP BY user", conn)
-    if df.empty:
-        st.info("Belum ada data.")
-    else:
-        df["Gaji"] = df["total_terjual"] * gaji_per_kerupuk
-        st.dataframe(df)
-        st.subheader(f"Total Gaji Dibayarkan: Rp {df['Gaji'].sum():,.0f}")
-        if st.download_button("Ekspor Gaji", df.to_csv(index=False).encode(), "gaji_karyawan.csv", "text/csv"):
-            st.success("Data gaji diekspor.")
 
 # Tutup DB
 conn.close()
