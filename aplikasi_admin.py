@@ -93,7 +93,7 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # === MENU UTAMA ===
-menu = st.sidebar.selectbox("Menu", ["Rekap Penjualan", "Dashboard", "Laporan Bulanan"])
+menu = st.sidebar.selectbox("Menu", ["Rekap Penjualan", "Dashboard", "Laporan Bulanan", "Gaji Karyawan" ])
 
 # === MENU ADMIN KHUSUS ===
 if st.session_state.is_admin:
@@ -168,6 +168,20 @@ elif menu == "Laporan Bulanan":
         df["tanggal"] = pd.to_datetime(df["tanggal"]).dt.strftime("%d-%m-%Y")
         st.dataframe(df)
         st.subheader(f"Total Pendapatan Bulan Ini: Rp {df['Pendapatan'].sum():,.0f}")
+
+# Menu: Gaji
+elif menu == "Gaji Karyawan":
+    st.header("Perhitungan Gaji Karyawan")
+    gaji_per_kerupuk = st.number_input("Upah per kerupuk terjual (Rp)", min_value=0, value=500)
+    df = pd.read_sql("SELECT user, SUM(jumlah_terjual) as total_terjual FROM kirim GROUP BY user", conn)
+    if df.empty:
+        st.info("Belum ada data.")
+    else:
+        df["Gaji"] = df["total_terjual"] * gaji_per_kerupuk
+        st.dataframe(df)
+        st.subheader(f"Total Gaji Dibayarkan: Rp {df['Gaji'].sum():,.0f}")
+        if st.download_button("Ekspor Gaji", df.to_csv(index=False).encode(), "gaji_karyawan.csv", "text/csv"):
+            st.success("Data gaji diekspor.")
 
 # === Tutup koneksi DB ===
 conn.close()
