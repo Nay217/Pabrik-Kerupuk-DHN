@@ -117,7 +117,7 @@ if st.session_state.is_admin:
         if non_admins:
             promote_user = st.selectbox("Pilih user untuk jadi admin", non_admins)
             if st.button("Jadikan Admin"):
-                c.execute("UPDATE users SET is_admin = 1 WHERE username = ?", (promote_user,))
+                c.execute("UPDATE users SET is_admin = 1 BOS KERUPUK = ?", (promote_user,))
                 conn.commit()
                 st.success(f"{promote_user} sekarang admin!")
                 st.rerun()
