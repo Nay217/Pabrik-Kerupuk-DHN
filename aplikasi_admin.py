@@ -172,58 +172,22 @@ elif menu == "Laporan Bulanan":
 # Menu: Gaji
 elif menu == "Gaji Karyawan":
     st.header("Perhitungan Gaji Karyawan")
-
-    gaji_per_kerupuk = st.number_input("Upah per kerupuk terjual (Rp)", min_value=0, value=500)
-
-    bulan = st.selectbox("Pilih Bulan", list(range(1, 13)), format_func=lambda x: f"{x:02}")
-    tahun = st.number_input("Tahun", value=date.today().year, step=1)
-
-    user_list_query = "SELECT DISTINCT user FROM kirim"
-    users = [row[0] for row in c.execute(user_list_query).fetchall()]
-    selected_user = st.selectbox("Pilih Karyawan", ["Semua"] + users)
-
-    base_query = """
-        SELECT user, SUM(jumlah_terjual) as total_terjual 
-        FROM kirim 
-        WHERE strftime('%m', tanggal) = ? AND strftime('%Y', tanggal) = ?
-    """
-    params = [f"{bulan:02}", str(tahun)]
-
-    if selected_user != "Semua":
-        base_query += " AND user = ?"
-        params.append(selected_user)
-
-    base_query += " GROUP BY user"
-
-    df = pd.read_sql(base_query, conn, params=params)
+    margin_per_kerupuk = 1000  # Selisih harga jual ke warung (5000) dan harga dari pabrik (4000)
+    df = pd.read_sql("""
+        SELECT tanggal, user, SUM(jumlah_terjual) as total_terjual
+        FROM kirim
+        GROUP BY tanggal, user
+        ORDER BY tanggal, user
+    """, conn)
 
     if df.empty:
         st.info("Belum ada data.")
     else:
-        df["Gaji"] = df["total_terjual"] * gaji_per_kerupuk
+        df["Gaji Hari Itu"] = df["total_terjual"] * margin_per_kerupuk
         st.dataframe(df)
-
-        st.subheader(f"Total Gaji: Rp {df['Gaji'].sum():,.0f}")
-
-        st.bar_chart(df.set_index("user")["Gaji"])
-
-        # Ekspor
-        st.markdown("### 📥 Ekspor Data Gaji")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.download_button("Ekspor ke CSV", df.to_csv(index=False).encode(), "gaji_karyawan.csv", "text/csv")
-        with col2:
-            try:
-                import io
-                from pandas import ExcelWriter
-
-                output = io.BytesIO()
-                with ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name="Gaji")
-                    writer.save()
-                st.download_button("Ekspor ke Excel", output.getvalue(), "gaji_karyawan.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            except Exception as e:
-                st.warning("Gagal ekspor ke Excel. Pastikan library xlsxwriter terinstal.")
+        st.subheader(f"Total Gaji Keseluruhan: Rp {df['Gaji Hari Itu'].sum():,.0f}")
+        if st.download_button("Ekspor Gaji", df.to_csv(index=False).encode(), "gaji_karyawan.csv", "text/csv"):
+            st.success("Data gaji berhasil diekspor.")
 
 # === Tutup koneksi DB ===
 conn.close()
