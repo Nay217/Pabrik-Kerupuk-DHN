@@ -93,7 +93,7 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # === MENU UTAMA ===
-menu = st.sidebar.selectbox("Menu", ["Rekap Penjualan", "Dashboard", "Laporan Bulanan", "Gaji Karyawan" ])
+menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung","Rekap Penjualan", "Dashboard", "Laporan Bulanan", "Gaji Karyawan" ])
 
 # === MENU ADMIN KHUSUS ===
 if st.session_state.is_admin:
@@ -114,20 +114,49 @@ if st.session_state.is_admin:
         else:
             st.info("Tidak ada user biasa untuk dipromosikan.")
 
-# === MENU: Rekap Penjualan ===
+# Menu: Kirim
+if menu == "Kirim ke Warung":
+    st.header("Input Pengiriman")
+    tgl = st.date_input("Tanggal", date.today())
+    warung = st.text_input("Nama Warung")
+    kirim = st.number_input("Jumlah Dikirim", min_value=0)
+    jual = st.number_input("Jumlah Terjual", min_value=0)
+    harga = st.number_input("Harga Satuan (Rp)", min_value=0)
+    if st.button("Simpan"):
+        if not warung:
+            st.warning("Nama warung wajib diisi.")
+        elif jual > kirim:
+            st.warning("Jumlah terjual tidak boleh lebih besar dari jumlah kirim.")
+        else:
+            c.execute("INSERT INTO kirim (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, user) VALUES (?, ?, ?, ?, ?, ?)",
+                      (tgl, warung, kirim, jual, harga, st.session_state.username))
+            conn.commit()
+            st.success("Data disimpan!")
+
+# Menu: Rekap
 elif menu == "Rekap Penjualan":
     st.header("Rekap Penjualan")
-    if st.session_state.is_admin:
-        df = pd.read_sql("SELECT * FROM kirim", conn)
-    else:
-        df = pd.read_sql("SELECT * FROM kirim WHERE user = ?", conn, params=(st.session_state.username,))
+    filter_user = st.selectbox("Filter berdasarkan User", ["Semua"] + list(pd.read_sql("SELECT DISTINCT user FROM kirim", conn)["user"])) if st.session_state.is_admin else st.session_state.username
+    filter_warung = st.text_input("Filter Nama Warung (opsional)")
+    query = "SELECT * FROM kirim"
+    params = []
+
+    if filter_user != "Semua":
+        query += " WHERE user = ?"
+        params.append(filter_user)
+    if filter_warung:
+        query += " AND warung LIKE ?" if "WHERE" in query else " WHERE warung LIKE ?"
+        params.append(f"%{filter_warung}%")
+
+    df = pd.read_sql_query(query, conn, params=params)
     if df.empty:
-        st.info("Belum ada data.")
+        st.info("Tidak ada data.")
     else:
         df["Pendapatan"] = df["jumlah_terjual"] * df["harga_satuan"]
-        df["tanggal"] = pd.to_datetime(df["tanggal"]).dt.strftime("%d-%m-%Y")
         st.dataframe(df)
         st.subheader(f"Total Pendapatan: Rp {df['Pendapatan'].sum():,.0f}")
+        if st.download_button("Ekspor ke Excel", df.to_csv(index=False).encode(), "rekap.csv", "text/csv"):
+            st.success("Berhasil diekspor.")
 
 # === MENU: Dashboard Harian ===
 elif menu == "Dashboard":
