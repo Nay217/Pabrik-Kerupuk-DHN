@@ -59,7 +59,7 @@ if not st.session_state.logged_in:
                 st.session_state.username = username
                 st.session_state.is_admin = bool(user[2])
                 st.success("Login berhasil!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Username atau password salah.")
     else:
@@ -82,109 +82,91 @@ if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.session_state.is_admin = False
-    st.experimental_rerun()
+    st.rerun()
 
-# === MENU KHUSUS ADMIN ===
-if st.session_state.is_admin:
-    st.header("📊 Admin Dashboard")
+# === MENU UMUM ===
+menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung", "Rekap Penjualan", "Dashboard Harian", "Laporan Bulanan"])
 
-    df = pd.read_sql_query("SELECT * FROM kirim", conn)
+if menu == "Kirim ke Warung":
+    st.header("Input Pengiriman / Titipan")
+    tanggal = st.date_input("Tanggal", date.today())
+    warung = st.text_input("Nama Warung")
+    jumlah_kirim = st.number_input("Jumlah Kerupuk Dikirim", min_value=0)
+    jumlah_terjual = st.number_input("Jumlah Terjual", min_value=0)
+    harga_satuan = st.number_input("Harga Satuan (Rp)", min_value=0)
+
+    if st.button("Simpan"):
+        if not warung:
+            st.warning("Nama warung tidak boleh kosong.")
+        elif jumlah_terjual > jumlah_kirim:
+            st.warning("Jumlah terjual tidak boleh lebih besar dari jumlah kirim.")
+        else:
+            c.execute("""
+                INSERT INTO kirim (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, user)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, st.session_state.username))
+            conn.commit()
+            st.success("Data berhasil disimpan.")
+
+elif menu == "Rekap Penjualan":
+    st.header("Rekap Penjualan")
+    if st.session_state.is_admin:
+        df = pd.read_sql_query("SELECT * FROM kirim", conn)
+    else:
+        df = pd.read_sql_query("SELECT * FROM kirim WHERE user = ?", conn, params=(st.session_state.username,))
+
     if df.empty:
         st.info("Belum ada data.")
     else:
         df["Pendapatan"] = df["jumlah_terjual"] * df["harga_satuan"]
-        df["tanggal"] = pd.to_datetime(df["tanggal"])
-
-        st.subheader("Semua Rekapan")
+        df["tanggal"] = pd.to_datetime(df["tanggal"]).dt.strftime("%d-%m-%Y")
         st.dataframe(df)
+        st.subheader(f"Total Pendapatan: Rp {df['Pendapatan'].sum():,.0f}")
 
-        st.subheader("Total Pendapatan Keseluruhan")
-        st.metric("Total (Rp)", f"{df['Pendapatan'].sum():,.0f}")
-
-        st.subheader("Pendapatan per Karyawan")
-        st.bar_chart(df.groupby("user")["Pendapatan"].sum())
-
-        st.subheader("Dashboard Mingguan")
-        minggu_lalu = date.today() - timedelta(days=7)
-        df_minggu = df[df["tanggal"] >= pd.to_datetime(minggu_lalu)]
-        if not df_minggu.empty:
-            chart = df_minggu.groupby(df_minggu["tanggal"].dt.strftime("%d-%m"))["Pendapatan"].sum()
-            st.line_chart(chart)
-
-        st.subheader("Dashboard Bulanan")
-        df["Bulan"] = df["tanggal"].dt.strftime("%B %Y")
-        bulanan = df.groupby("Bulan")["Pendapatan"].sum().reset_index()
-        st.bar_chart(bulanan.set_index("Bulan"))
-
-else:
-    # === MENU UNTUK USER BIASA ===
-    menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan"])
-
-    if menu == "Kirim ke Warung":
-        st.header("Input Pengiriman / Titipan")
-        tanggal = st.date_input("Tanggal", date.today())
-        warung = st.text_input("Nama Warung")
-        jumlah_kirim = st.number_input("Jumlah Kerupuk Dikirim", min_value=0)
-        jumlah_terjual = st.number_input("Jumlah Terjual", min_value=0)
-        harga_satuan = st.number_input("Harga Satuan (Rp)", min_value=0)
-
-        if st.button("Simpan"):
-            if not warung:
-                st.warning("Nama warung tidak boleh kosong.")
-            elif jumlah_terjual > jumlah_kirim:
-                st.warning("Jumlah terjual tidak boleh lebih besar dari jumlah kirim.")
-            else:
-                c.execute("""INSERT INTO kirim (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, user)
-                             VALUES (?, ?, ?, ?, ?, ?)""",
-                          (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, st.session_state.username))
-                conn.commit()
-                st.success("Data berhasil disimpan.")
-
-    elif menu == "Rekap Penjualan":
-        st.header("Rekap Penjualan")
-        df = pd.read_sql_query("SELECT * FROM kirim WHERE user = ?", conn, params=(st.session_state.username,))
-        if df.empty:
-            st.info("Belum ada data.")
-        else:
-            df["Pendapatan"] = df["jumlah_terjual"] * df["harga_satuan"]
-            df["tanggal"] = pd.to_datetime(df["tanggal"]).dt.strftime("%d-%m-%Y")
-            st.dataframe(df)
-            st.subheader(f"Total Pendapatan: Rp {df['Pendapatan'].sum():,.0f}")
-
-    elif menu == "Dashboard":
-        st.header("Dashboard Harian")
-        hari_ini = date.today()
+elif menu == "Dashboard Harian":
+    st.header("Dashboard Harian")
+    hari_ini = date.today()
+    if st.session_state.is_admin:
+        df = pd.read_sql_query("SELECT * FROM kirim WHERE tanggal = ?", conn, params=(hari_ini,))
+    else:
         df = pd.read_sql_query(
             "SELECT * FROM kirim WHERE tanggal = ? AND user = ?",
             conn, params=(hari_ini, st.session_state.username)
         )
-        if df.empty:
-            st.info("Belum ada data hari ini.")
-        else:
-            df["Pendapatan"] = df["jumlah_terjual"] * df["harga_satuan"]
-            df["tanggal"] = pd.to_datetime(df["tanggal"]).dt.strftime("%d-%m-%Y")
-            st.dataframe(df)
-            st.subheader(f"Pendapatan Hari Ini: Rp {df['Pendapatan'].sum():,.0f}")
-            df_chart = df.groupby("warung")["Pendapatan"].sum().reset_index()
-            st.bar_chart(df_chart.set_index("warung"))
+    if df.empty:
+        st.info("Belum ada data hari ini.")
+    else:
+        df["Pendapatan"] = df["jumlah_terjual"] * df["harga_satuan"]
+        df["tanggal"] = pd.to_datetime(df["tanggal"]).dt.strftime("%d-%m-%Y")
+        st.dataframe(df)
+        st.subheader(f"Pendapatan Hari Ini: Rp {df['Pendapatan'].sum():,.0f}")
+        df_chart = df.groupby("warung")["Pendapatan"].sum().reset_index()
+        st.bar_chart(df_chart.set_index("warung"))
 
-    elif menu == "Laporan Bulanan":
-        st.header("Laporan Bulanan")
-        bulan = st.selectbox("Pilih Bulan", list(range(1, 13)), format_func=lambda x: f"{x:02}")
-        tahun = st.number_input("Tahun", value=date.today().year, step=1)
-
+elif menu == "Laporan Bulanan":
+    st.header("Laporan Bulanan")
+    bulan = st.selectbox("Pilih Bulan", list(range(1, 13)), format_func=lambda x: f"{x:02}")
+    tahun = st.number_input("Tahun", value=date.today().year, step=1)
+    if st.session_state.is_admin:
+        query = """
+            SELECT * FROM kirim
+            WHERE strftime('%m', tanggal) = ? AND strftime('%Y', tanggal) = ?
+        """
+        df = pd.read_sql_query(query, conn, params=(f"{bulan:02}", str(tahun)))
+    else:
         query = """
             SELECT * FROM kirim
             WHERE strftime('%m', tanggal) = ? AND strftime('%Y', tanggal) = ? AND user = ?
         """
         df = pd.read_sql_query(query, conn, params=(f"{bulan:02}", str(tahun), st.session_state.username))
-        if df.empty:
-            st.info("Belum ada data bulan ini.")
-        else:
-            df["Pendapatan"] = df["jumlah_terjual"] * df["harga_satuan"]
-            df["tanggal"] = pd.to_datetime(df["tanggal"]).dt.strftime("%d-%m-%Y")
-            st.dataframe(df)
-            st.subheader(f"Total Pendapatan Bulan Ini: Rp {df['Pendapatan'].sum():,.0f}")
+
+    if df.empty:
+        st.info("Belum ada data bulan ini.")
+    else:
+        df["Pendapatan"] = df["jumlah_terjual"] * df["harga_satuan"]
+        df["tanggal"] = pd.to_datetime(df["tanggal"]).dt.strftime("%d-%m-%Y")
+        st.dataframe(df)
+        st.subheader(f"Total Pendapatan Bulan Ini: Rp {df['Pendapatan'].sum():,.0f}")
 
 # === Tutup koneksi ===
 conn.close()
