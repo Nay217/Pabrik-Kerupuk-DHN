@@ -93,7 +93,7 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # === MENU UTAMA ===
-menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan"])
+menu = st.sidebar.selectbox("Menu", ["Rekap Penjualan", "Dashboard", "Laporan Bulanan"])
 
 # === MENU ADMIN KHUSUS ===
 if st.session_state.is_admin:
@@ -113,28 +113,6 @@ if st.session_state.is_admin:
                 st.rerun()
         else:
             st.info("Tidak ada user biasa untuk dipromosikan.")
-
-# === MENU: Kirim ke Warung ===
-if menu == "Kirim ke Warung":
-    st.header("Input Pengiriman / Titipan")
-    tanggal = st.date_input("Tanggal", date.today())
-    warung = st.text_input("Nama Warung")
-    jumlah_kirim = st.number_input("Jumlah Kerupuk Dikirim", min_value=0)
-    jumlah_terjual = st.number_input("Jumlah Terjual", min_value=0)
-    harga_satuan = st.number_input("Harga Satuan (Rp)", min_value=0)
-
-    if st.button("Simpan"):
-        if not warung:
-            st.warning("Nama warung tidak boleh kosong.")
-        elif jumlah_terjual > jumlah_kirim:
-            st.warning("Jumlah terjual tidak boleh lebih dari jumlah kirim.")
-        else:
-            c.execute("""
-                INSERT INTO kirim (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, user)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (tanggal, warung, jumlah_kirim, jumlah_terjual, harga_satuan, st.session_state.username))
-            conn.commit()
-            st.success("Data berhasil disimpan.")
 
 # === MENU: Rekap Penjualan ===
 elif menu == "Rekap Penjualan":
