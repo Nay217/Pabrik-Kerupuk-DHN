@@ -1,18 +1,17 @@
-import streamlit as st
+import streamlit as st 
 import pandas as pd
 import sqlite3
-from datetime import date, timedelta
+from datetime import date
 
-# === SETUP ===
 st.set_page_config(page_title="Pabrik Kerupuk DHN", layout="centered")
 st.title("Pabrik Kerupuk DHN 🍘")
 st.markdown("---")
 
-# === DATABASE ===
+# === DB SETUP ===
 conn = sqlite3.connect("kerupuk.db", check_same_thread=False)
 c = conn.cursor()
 
-# Buat tabel users
+# Buat tabel user
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
@@ -35,7 +34,12 @@ CREATE TABLE IF NOT EXISTS kirim (
 """)
 conn.commit()
 
-# === SESSION ===
+# Cek apakah sudah ada admin
+c.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1")
+if c.fetchone()[0] == 0:
+    st.info("Belum ada admin. User pertama yang daftar akan menjadi admin.")
+
+# === SESSION STATE ===
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
@@ -43,7 +47,7 @@ if "username" not in st.session_state:
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 
-# === LOGIN & REGISTRASI ===
+# === REGISTRASI & LOGIN ===
 menu_auth = st.sidebar.selectbox("Login / Daftar", ["Login", "Daftar"])
 
 if not st.session_state.logged_in:
@@ -71,7 +75,10 @@ if not st.session_state.logged_in:
             if c.fetchone():
                 st.error("Username sudah dipakai.")
             else:
-                c.execute("INSERT INTO users (username, password, is_admin) VALUES (?, ?, 0)", (new_user, new_pass))
+                c.execute("SELECT COUNT(*) FROM users")
+                user_count = c.fetchone()[0]
+                is_admin = 1 if user_count == 0 else 0
+                c.execute("INSERT INTO users (username, password, is_admin) VALUES (?, ?, ?)", (new_user, new_pass, is_admin))
                 conn.commit()
                 st.success("Akun berhasil dibuat. Silakan login.")
     st.stop()
@@ -84,9 +91,34 @@ if st.sidebar.button("Logout"):
     st.session_state.is_admin = False
     st.rerun()
 
-# === MENU UMUM ===
-menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung", "Rekap Penjualan", "Dashboard Harian", "Laporan Bulanan"])
+# === MENU UTAMA ===
+menu = st.sidebar.selectbox("Menu", ["Kirim ke Warung", "Rekap Penjualan", "Dashboard", "Laporan Bulanan"])
 
+# === MENU ADMIN KHUSUS ===
+if st.session_state.is_admin:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔧 Kelola User")
+    kelola = st.sidebar.checkbox("Kelola Hak Akses")
+
+    if kelola:
+        st.subheader("Manajemen User")
+        df_user = pd.read_sql_query("SELECT username, is_admin FROM users", conn)
+        st.dataframe(df_user)
+
+        user_pilihan = df_user[df_user["is_admin"] == 0]["username"].tolist()
+        if user_pilihan:
+            selected_user = st.selectbox("Pilih User untuk Dijadikan Admin", user_pilihan)
+            if st.button("Jadikan Admin"):
+                c.execute("UPDATE users SET is_admin = 1 WHERE username = ?", (selected_user,))
+                conn.commit()
+                st.success(f"{selected_user} sekarang adalah admin!")
+                st.experimental_rerun()
+        else:
+            st.info("Tidak ada user biasa yang tersedia untuk dipromosikan.")
+
+st.title("Dashboard Keuangan Kerupuk")
+
+# === MENU Kirim ===
 if menu == "Kirim ke Warung":
     st.header("Input Pengiriman / Titipan")
     tanggal = st.date_input("Tanggal", date.today())
@@ -108,13 +140,13 @@ if menu == "Kirim ke Warung":
             conn.commit()
             st.success("Data berhasil disimpan.")
 
+# === MENU Rekap Penjualan ===
 elif menu == "Rekap Penjualan":
     st.header("Rekap Penjualan")
     if st.session_state.is_admin:
         df = pd.read_sql_query("SELECT * FROM kirim", conn)
     else:
         df = pd.read_sql_query("SELECT * FROM kirim WHERE user = ?", conn, params=(st.session_state.username,))
-
     if df.empty:
         st.info("Belum ada data.")
     else:
@@ -123,7 +155,8 @@ elif menu == "Rekap Penjualan":
         st.dataframe(df)
         st.subheader(f"Total Pendapatan: Rp {df['Pendapatan'].sum():,.0f}")
 
-elif menu == "Dashboard Harian":
+# === MENU Dashboard Harian ===
+elif menu == "Dashboard":
     st.header("Dashboard Harian")
     hari_ini = date.today()
     if st.session_state.is_admin:
@@ -143,6 +176,7 @@ elif menu == "Dashboard Harian":
         df_chart = df.groupby("warung")["Pendapatan"].sum().reset_index()
         st.bar_chart(df_chart.set_index("warung"))
 
+# === MENU Laporan Bulanan ===
 elif menu == "Laporan Bulanan":
     st.header("Laporan Bulanan")
     bulan = st.selectbox("Pilih Bulan", list(range(1, 13)), format_func=lambda x: f"{x:02}")
@@ -159,7 +193,6 @@ elif menu == "Laporan Bulanan":
             WHERE strftime('%m', tanggal) = ? AND strftime('%Y', tanggal) = ? AND user = ?
         """
         df = pd.read_sql_query(query, conn, params=(f"{bulan:02}", str(tahun), st.session_state.username))
-
     if df.empty:
         st.info("Belum ada data bulan ini.")
     else:
