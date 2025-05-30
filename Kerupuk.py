@@ -109,9 +109,6 @@ menu = st.sidebar.selectbox("Menu", [
 if st.session_state.is_admin:
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔧 Kelola User")
-    🔧 Kelola User
-[ ] Kelola Hak Akses ← ini checklist!
-
     if st.sidebar.checkbox("Kelola Hak Akses"):
         st.subheader("Manajemen User")
         df_users = pd.read_sql("SELECT username, is_admin FROM users", conn)
